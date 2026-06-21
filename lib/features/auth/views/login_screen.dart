@@ -49,7 +49,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(const SnackBar(content: Text('Đăng nhập thành công!')));
-        // Chuyển hướng sang Dashboard ở đây (ví dụ: context.go('/dashboard'))
+        // Chuyển hướng sang Dashboard ở đây
+        Navigator.pushReplacementNamed(context, '/dashboard');
       }
     });
 

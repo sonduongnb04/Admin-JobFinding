@@ -1,36 +1,29 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../models/login_request.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/auth_service.dart';
 
-// State Enum
 enum AuthStatus { initial, loading, success, error }
 
-// State Class
 class AuthState {
   final AuthStatus status;
   final String? errorMessage;
-  final String? token; // Có thể lưu token sau khi đăng nhập thành công vào state tạm
 
   AuthState({
     this.status = AuthStatus.initial,
     this.errorMessage,
-    this.token,
   });
 
   AuthState copyWith({
     AuthStatus? status,
     String? errorMessage,
-    String? token,
   }) {
     return AuthState(
       status: status ?? this.status,
       errorMessage: errorMessage ?? this.errorMessage,
-      token: token ?? this.token,
     );
   }
 }
 
-// ViewModel (Notifier)
 class AuthViewModel extends Notifier<AuthState> {
   late final AuthService _authService;
 
@@ -44,15 +37,37 @@ class AuthViewModel extends Notifier<AuthState> {
     state = state.copyWith(status: AuthStatus.loading, errorMessage: null);
 
     try {
-      final request = LoginRequest(email: email, password: password);
-      final response = await _authService.login(request);
+      // 1. Login to get tokens
+      final loginData = await _authService.login(email, password);
       
-      // Xử lý lưu SharedPreferences ở đây nếu cần (tùy nghiệp vụ)
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('accessToken', loginData['accessToken'] ?? '');
+      await prefs.setString('refreshToken', loginData['refreshToken'] ?? '');
+
+      // 2. Check role from login data directly
+      final roles = loginData['roles'];
+      bool isAdmin = false;
       
-      state = state.copyWith(
-        status: AuthStatus.success,
-        token: response.token,
-      );
+      if (roles is List) {
+        isAdmin = roles.contains('ADMIN');
+      } else if (roles is String) {
+        isAdmin = roles == 'ADMIN';
+      } else if (loginData['role'] == 'ADMIN') {
+        isAdmin = true;
+      }
+
+      if (!isAdmin) {
+        // Not admin, clear tokens
+        await prefs.remove('accessToken');
+        await prefs.remove('refreshToken');
+        state = state.copyWith(
+          status: AuthStatus.error,
+          errorMessage: 'Không đủ quyền truy cập (Yêu cầu tài khoản Admin)',
+        );
+        return;
+      }
+      
+      state = state.copyWith(status: AuthStatus.success);
     } catch (e) {
       state = state.copyWith(
         status: AuthStatus.error,
@@ -66,7 +81,6 @@ class AuthViewModel extends Notifier<AuthState> {
   }
 }
 
-// Provider
 final authViewModelProvider = NotifierProvider<AuthViewModel, AuthState>(() {
   return AuthViewModel();
 });
